@@ -152,3 +152,10 @@ photos/*.jpg (they are pre-cropped, watermark-free):
 - Cards have rounded corners (16px) and 1px light-grey borders on dark.
 - Text must never sit on a busy photo area without the scrim.
 - Keep every containment check; PNG 1024x1024 under 900 KB.
+
+## v6.1 — map fix (current directive)
+In the WHERE IT HAPPENED panel, composite photos/worldmap_dark.png (dark
+blue-grey continents on transparency, 1280x567) behind the numbered dots:
+scale it to fill the panel width (~460px wide, keep aspect), place so it
+sits behind the existing dot coordinates, and draw dots on top. Keep the
+legend. Do not change anything else.
