@@ -39,22 +39,37 @@ manga. Every fact below happened on, or was first reported on, Friday
       372,000 evacuated. Illustration: coastline, spiral cyclone symbol,
       red dashed landfall arrow.
 5. Grid of ten mid stories (5 columns x 2 rows). EVERY story gets its own
-   real illustration: a flat-art pictogram scene ~64px tall at the top of its
-   cell (not a tiny icon — a drawing), then tag chip, short serif headline,
-   2-line body. The ten scenes:
-   4) Nvidia: a green descending stock candlestick with a red SEC magnifier.
-   5) COP31: grey smokestacks with fading CO2 puffs over a cracked earth strip.
-   6) Poland: a dark forest of triangles with two small missile silhouettes
-      stuck in the ground.
-   7) UK-EU: two hands shaking over a small flag pair ( Union Jack simplified
-      cross + EU blue circle of stars).
-   8) Hormuz: a black tanker hull with orange flames and grey smoke plumes.
-   9) India-Pakistan: two simple flags (green with crescent, saffron/white/
-      green stripes) facing each other over a dotted handshake line.
-   10) Kenya: an oil derrick triangle over ground layers, black droplet.
-   11) New Zealand: a white rugby ball mid-flight over two tiny player figures.
-   12) Argentina: a steep rising red risk line with flag-blue sun disc.
-   13) Health: a capsule pill half red half white with radiating success ticks.
+   DOODLE STICKER illustration, ~90px tall, at the top of its cell.
+   Doodle sticker style rules (apply to the three featured illustrations too):
+   - Very thick near-black outlines (5-6px) on every shape; each drawing sits
+     on a white sticker border (draw silhouette 10px larger in pure white
+     first), like a die-cut sticker.
+   - Flat bright fills (no gradients, no shading): bold red, yellow, sky
+     blue, green, purple, orange; hand-drawn marker feel via slightly
+     rounded line joins.
+   - Small expressive faces (dot eyes, simple mouths) on personified objects,
+     plus little sparkles, motion dashes and zigzag energy marks.
+   The ten scenes:
+   4) Nvidia: panicked green candlestick chart with shocked face, red
+      magnifier looming.
+   5) COP31: sweating sad Earth with a band-aid and grey smoke puffs.
+   6) Poland: two sleepy missiles lying in a dark green forest patch.
+   7) UK-EU: handshake with tiny UK and EU flag badges.
+   8) Hormuz: alarmed black tanker with orange flames.
+   9) India-Pakistan: two cute flag badges facing off.
+   10) Kenya: proud oil derrick with smiling black droplet.
+   11) New Zealand: flying rugby ball with motion dashes.
+   12) Argentina: dizzy rising red line, blue sun badge.
+   13) Health: smiling capsule pill (half coral half white) with sparkles.
+   The three featured stories keep larger scenes in the same style:
+   1) Kyiv: night-sky patch, worried-face moon, city silhouette, three
+      bridge arcs with crack marks, missiles with motion streaks.
+   2) Markets: big panicked red chart sticker falling down a dotted slide,
+      tiny terrified coin stickers bouncing off.
+   3) Cyclone: grumpy spiral cloud sticker spinning over a coastal village
+      patch, tiny evacuation bus fleeing.
+   Vary cell backgrounds with light pastel tints (cream / mint / sky /
+   butter) and keep 8px+ padding so nothing touches panel edges.
    VARY the visual rhythm so the grid does not look mechanical: alternate a
    very light tinted background per cell (cream / warm / cool), offset the
    illustration left vs right between neighboring cells, and give each row a
