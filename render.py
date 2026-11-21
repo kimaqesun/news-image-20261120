@@ -236,7 +236,7 @@ DATE_CHECK_ITEMS = ("Trump\u2013Xi\u2013Putin Shenzhen talks (Thu 19) \u00b7 "
                     "Denmark's Greenland vote (Thu 19)")
 BOTTOM_LINE = ("Every story here happened on, or was first reported on, "
                "Friday 20 November 2026 \u00b7 Sources: AP, Reuters, AFP, "
-               "BBC, IMF, UKMT\u00d2 \u00b7 original drawings")
+               "BBC, IMF, UKMTO · original drawings")
 
 # Map dots: (story number, x, y) in local map coordinates.
 MAP_REGIONS = [
