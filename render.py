@@ -3,6 +3,7 @@
 
 Flat cel-shaded look, manga panels, halftone dots, chibi mascots.
 Deterministic PIL only. 1024x1024 PNG.
+v3 final
 """
 from PIL import Image, ImageDraw, ImageFilter, ImageFont
 import math, os
@@ -19,6 +20,7 @@ f_body = font('DejaVuSans.ttf', 16)
 f_tag = font('DejaVuSansMono-Bold.ttf', 13)
 f_big = font('DejaVuSans-Bold.ttf', 30)
 
+# cel-shaded manga panels with chibi mascots
 # palette
 BG = (18, 16, 28)
 PAPER = (246, 240, 230)

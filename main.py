@@ -4,6 +4,7 @@
 Writes the rendered 1024x1024 news poster (shipped in this repo as
 entry.png, produced by render.py) to /output/entry.png.
 Deterministic: no network, no randomness, no clock use.
+Rendered by render.py in this repository.
 """
 import os
 import shutil
