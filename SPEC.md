@@ -38,8 +38,27 @@ manga. Every fact below happened on, or was first reported on, Friday
       Landfall 02:00–03:00 UTC near Gopalpur, 70–80 km/h winds, 209 mm of rain,
       372,000 evacuated. Illustration: coastline, spiral cyclone symbol,
       red dashed landfall arrow.
-5. Grid of ten mid stories (5 columns x 2 rows), each: tiny accent-colored
-   icon square (flat shape), tag chip, short serif headline, 2-line body:
+5. Grid of ten mid stories (5 columns x 2 rows). EVERY story gets its own
+   real illustration: a flat-art pictogram scene ~64px tall at the top of its
+   cell (not a tiny icon — a drawing), then tag chip, short serif headline,
+   2-line body. The ten scenes:
+   4) Nvidia: a green descending stock candlestick with a red SEC magnifier.
+   5) COP31: grey smokestacks with fading CO2 puffs over a cracked earth strip.
+   6) Poland: a dark forest of triangles with two small missile silhouettes
+      stuck in the ground.
+   7) UK-EU: two hands shaking over a small flag pair ( Union Jack simplified
+      cross + EU blue circle of stars).
+   8) Hormuz: a black tanker hull with orange flames and grey smoke plumes.
+   9) India-Pakistan: two simple flags (green with crescent, saffron/white/
+      green stripes) facing each other over a dotted handshake line.
+   10) Kenya: an oil derrick triangle over ground layers, black droplet.
+   11) New Zealand: a white rugby ball mid-flight over two tiny player figures.
+   12) Argentina: a steep rising red risk line with flag-blue sun disc.
+   13) Health: a capsule pill half red half white with radiating success ticks.
+   VARY the visual rhythm so the grid does not look mechanical: alternate a
+   very light tinted background per cell (cream / warm / cool), offset the
+   illustration left vs right between neighboring cells, and give each row a
+   different accent underline style (solid / dashed / double).
    4) US · TECH (red): "Nvidia sinks 14% on SEC probe report". Reuters reports
       SEC staff examining its accounting.
    5) TÜRKIYE (amber): "COP31 runs into overtime, no deal". Draft omits fossil
