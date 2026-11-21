@@ -135,3 +135,20 @@ Overwrite main.py: copies the shipped entry.png to
 os.environ.get('MAKEFUN_OUTPUT_DIR', '/output') + '/entry.png' (creates the
 directory), prints what it wrote. Then edit it once to polish its messages
 (the entrypoint must be revised after its first write).
+
+## v6 — photo-card redesign (current directive)
+Rewrite the layout to a dark tech theme (background (10,14,26)) exactly in the
+spirit of a modern news-aggregator card grid, using the 13 shipped photos in
+photos/*.jpg (they are pre-cropped, watermark-free):
+- Header: small caps "ONE DAY OF WORLD NEWS", huge white serif date, thin rule.
+- "THE DAY IN NUMBERS" strip on dark: white mono numbers, red/blue accents.
+- 3 featured cards: photo fills the card top (~55%), dark gradient scrim over
+  the photo bottom, colored tag chip (red/blue/teal) at top-left of the card,
+  white bold headline + 2-line light-grey body under the photo.
+- 10 grid cards: same treatment, photo ~40% of card height, pastel-tinted
+  cream body area below with dark ink text (keeps legibility).
+- WHERE IT HAPPENED map + ALSO ON FRIDAY list (14-32) + DATE CHECK footer:
+  keep, restyled dark with white text.
+- Cards have rounded corners (16px) and 1px light-grey borders on dark.
+- Text must never sit on a busy photo area without the scrim.
+- Keep every containment check; PNG 1024x1024 under 900 KB.
