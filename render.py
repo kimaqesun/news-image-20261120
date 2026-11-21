@@ -359,24 +359,41 @@ BOTTOM_LINE = ("Every story here happened on, or was first reported on, "
                "Friday 20 November 2026 \u00b7 Sources: AP, Reuters, AFP, "
                "BBC, IMF, UKMTO \u00b7 news photos")
 
-# Map dots: (story number, x, y) in local map coordinates (470 x 136).
-# Brightened accent colors for the dark panel.
+# v6.1 map: each dot is a real-world location (story number, latitude,
+# longitude in degrees).  Positions are projected onto the shipped dark world
+# map with the equirectangular math below, so the dots land on the right
+# continents.  Closely clustered stories are spread a few degrees so their
+# numbered markers never collide; longitudes/latitudes stay inside the same
+# continent.  Brightened accent colors for the dark panel.
 MAP_REGIONS = [
-    ("EUROPE", BBLUE, [(15, 262, 16), (6, 238, 32), (1, 290, 30),
-                       (14, 262, 44), (7, 220, 48), (17, 238, 62),
-                       (16, 280, 62), (5, 308, 52)]),
-    ("MIDDLE EAST", BAMBER, [(18, 314, 74), (19, 342, 60),
-                             (20, 326, 102), (8, 366, 80)]),
-    ("ASIA", BTEAL, [(9, 330, 40), (3, 344, 88), (25, 374, 96),
-                     (26, 398, 110), (23, 434, 36), (24, 408, 52)]),
-    ("AMERICAS", BRED, [(31, 72, 84), (29, 94, 56), (30, 122, 48),
-                        (2, 136, 32), (28, 152, 58), (4, 44, 48),
-                        (32, 36, 68), (12, 112, 124)]),
-    ("AFRICA", BGREEN, [(21, 230, 92), (22, 284, 84), (10, 298, 112)]),
-    ("OCEANIA", BPURPLE, [(27, 402, 124), (11, 440, 128)]),
+    ("EUROPE", BBLUE, [(15, 53.01, 26.54), (6, 53.01, 17.59),
+                       (1, 50.05, 34.76), (14, 45.75, 23.20),
+                       (7, 51.38, 1.54), (17, 48.91, 10.00),
+                       (16, 34.59, 31.54), (5, 42.39, 32.65)]),
+    ("MIDDLE EAST", BAMBER, [(18, 27.93, 36.22), (19, 32.80, 44.10),
+                             (20, 15.70, 43.63), (8, 26.20, 56.30)]),
+    ("ASIA", BTEAL, [(9, 28.61, 77.21), (3, 18.83, 84.41),
+                     (25, 24.76, 90.33), (26, 19.23, 96.70),
+                     (23, 35.68, 139.69), (24, 37.57, 126.98)]),
+    ("AMERICAS", BRED, [(31, 19.43, -99.13), (29, 39.00, -93.00),
+                        (30, 34.02, -83.98), (2, 40.19, -78.49),
+                        (28, 47.29, -64.04), (4, 38.50, -123.25),
+                        (32, 32.90, -116.95), (12, -34.60, -58.38),
+                        (13, 41.18, -69.61)]),
+    ("AFRICA", BGREEN, [(21, 9.27, 38.55), (22, 12.00, 29.00),
+                        (10, 1.85, 35.51)]),
+    ("OCEANIA", BPURPLE, [(27, -35.12, 138.00), (11, -35.12, 174.78)]),
 ]
 MAP_COUNTS = {"EUROPE": 8, "MIDDLE EAST": 4, "ASIA": 6,
-              "AMERICAS": 8, "AFRICA": 3, "OCEANIA": 2}
+              "AMERICAS": 9, "AFRICA": 3, "OCEANIA": 2}
+
+# Equirectangular projection of photos/worldmap_dark.png (1280 x 567,
+# transparent oceans).  The source spans roughly 176W..195E and 85N..60S.
+WORLD_MAP_PNG = "worldmap_dark.png"
+MAP_LON_MIN, MAP_LON_MAX = -176.0, 195.0
+MAP_LAT_TOP, MAP_LAT_BOT = 85.0, -60.0
+MAP_CENTER_LAT = 9.0       # latitude at the vertical center of the panel crop
+MAP_PAD_X = 5              # left/right padding inside the panel
 
 
 # ----------------------------------------------------------------------
@@ -533,34 +550,108 @@ def mid_grid(d, y0):
     return end + 6
 
 
+def world_map_geometry(panel_w, panel_h):
+    """Aspect-preserving map geometry for the panel.
+
+    The dark map is scaled to fill the panel width (460 px, 1280x567 source)
+    keeping its aspect, then a panel-height band is cropped from it.  Return
+    the scaled size, crop row and the equirectangular latitude window that
+    band represents, so dots can be projected into exactly the same pixels.
+    """
+    map_w = panel_w - 2 * MAP_PAD_X
+    check(map_w > 0, "world map has positive width")
+    map_h = round(map_w * 567 / 1280)
+    full_span = MAP_LAT_TOP - MAP_LAT_BOT
+    span = full_span * panel_h / map_h
+    target_top = MAP_CENTER_LAT + span / 2
+    crop_top = round((MAP_LAT_TOP - target_top) / full_span * map_h)
+    check(0 <= crop_top and crop_top + panel_h <= map_h,
+          "world map crop inside scaled image")
+    lat_top = MAP_LAT_TOP - crop_top / map_h * full_span
+    return map_w, map_h, crop_top, lat_top, span
+
+
+def load_world_map(map_w, map_h, crop_top, crop_h):
+    """Load the dark world-map asset, scale it to (map_w, map_h) keeping its
+    aspect, and crop the panel band.  Transparent oceans stay transparent."""
+    path = os.path.join(PHOTO_DIR, WORLD_MAP_PNG)
+    check(os.path.isfile(path), "world map asset exists")
+    with Image.open(path) as im:
+        im = im.convert("RGBA")
+        sw, sh = im.size
+        check((sw, sh) == (1280, 567), "world map source is 1280x567")
+        check(map_h == round(map_w * sh / sw), "world map keeps aspect")
+        scaled = im.resize((map_w, map_h), Image.Resampling.LANCZOS)
+    band = scaled.crop((0, crop_top, map_w, crop_top + crop_h))
+    check(band.size == (map_w, crop_h), "world map band size")
+    return band
+
+
+def project_latlon(lat, lon, lat_top, span, map_w, panel_h):
+    """Equirectangular projection of a (lat, lon) onto the map band.
+
+    Longitude maps linearly across the full image width; latitude maps
+    linearly across the cropped band.  Return offsets from the map's top-left.
+    Latitudes just outside the cropped band (the far north/south) are clamped
+    to the panel so their numbered dots stay inside it.
+    """
+    fx = (lon - MAP_LON_MIN) / (MAP_LON_MAX - MAP_LON_MIN)
+    fy = (lat_top - lat) / span
+    check(-0.08 <= fx <= 1.08 and -0.08 <= fy <= 1.08,
+          "lat/lon near map: %.2f,%.2f" % (lat, lon))
+    mx = min(map_w - 6, max(6, fx * map_w))
+    my = min(panel_h - 6, max(6, fy * panel_h))
+    return mx, my
+
+
 def world_map(d, x, y, w, h):
-    """Dot-cluster world map with numbered, color-coded story dots,
-    restyled for the dark panel (bright dots, white numbers)."""
-    d.rectangle([x, y, x + w, y + h], fill=PANEL, outline=BORDER, width=1)
+    """WHERE IT HAPPENED panel.
+
+    v6.1: composite the real dark world map behind the dots (scaled to the
+    panel width, aspect preserved), then draw the panel frame, graticule,
+    numbered dots and legend on TOP of the map.  Dot coordinates come from
+    real lat/lon via an equirectangular projection, so they sit on the right
+    continents.
+    """
+    panel = (x, y, x + w, y + h)
+    d.rectangle(panel, fill=PANEL)
+
+    mw, mh, crop_top, lat_top, span = world_map_geometry(w, h)
+    band = load_world_map(mw, mh, crop_top, h)
+    d._image.paste(band, (x + MAP_PAD_X, y), band)
+    check(band.size == (mw, h), "world map composited at panel width")
+
+    d.rectangle(panel, outline=BORDER, width=1)
     for gx in range(1, 6):
         vrule(d, x + round(gx * w / 6), y + 1, y + h - 1, MAP_GRID)
     for gy in range(1, 4):
         hrule(d, x + 1, x + w - 1, y + round(gy * h / 4), MAP_GRID)
+
     f_num = font("mono", 11)
     na, _ = f_num.getmetrics()
-    r = 4
-    dots = []   # (cx, cy, num, color, numbox)
+    r = 3
+    circles = []  # (cx, cy, num)
     for name, color, pts in MAP_REGIONS:
         check(len(pts) == MAP_COUNTS[name], "map count " + name)
-        for num, dx, dy in pts:
-            cx, cy = x + dx, y + dy
+        for num, lat, lon in pts:
+            mx, my = project_latlon(lat, lon, lat_top, span, mw, h)
+            cx, cy = x + MAP_PAD_X + mx, y + my
             check(x + r <= cx <= x + w - r and y + r <= cy <= y + h - r,
                   "dot inside map: %d" % num)
             d.ellipse([cx - r, cy - r, cx + r, cy + r], fill=color)
-            label = str(num)
-            tw = text_w(d, label, f_num)
-            nx, ny = cx + r + 3, cy - na // 2 - 1
-            nbox = (nx, ny, nx + tw, ny + na)
-            check(nbox[2] <= x + w - 2 and nbox[1] >= y + 1 and nbox[3] <= y + h - 1,
-                  "dot number inside map: %d" % num)
-            d.text((nx, ny), label, font=f_num, fill=WHITE)
-            dots.append((cx, cy, num, color, nbox))
-    # pairwise containment: dots and number boxes must never overlap
+            circles.append((cx, cy, num, color))
+
+    # Pairwise circle containment: dots never touch or overlap.
+    for i in range(len(circles)):
+        for j in range(i + 1, len(circles)):
+            ax, ay, an, _ = circles[i]
+            bx, by, bn, _ = circles[j]
+            dist2 = (ax - bx) ** 2 + (ay - by) ** 2
+            check(dist2 >= (2 * r + 4) ** 2,
+                  "dots %d/%d spaced (%.1fpx)" % (an, bn, math.sqrt(dist2)))
+
+    # Number labels go on TOP, choosing whichever nearby side is free so
+    # they never cover a dot or another number.
     def rect_circle_hit(box, cx, cy, rr):
         rx = max(box[0], min(cx, box[2]))
         ry = max(box[1], min(cy, box[3]))
@@ -569,20 +660,52 @@ def world_map(d, x, y, w, h):
     def rect_hit(a, b):
         return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
-    for i in range(len(dots)):
-        for j in range(i + 1, len(dots)):
-            ax, ay, an, _, abox = dots[i]
-            bx, by, bn, _, bbox = dots[j]
-            dist2 = (ax - bx) ** 2 + (ay - by) ** 2
-            check(dist2 >= (2 * r + 4) ** 2,
-                  "dots %d/%d spaced (%.1fpx)" % (an, bn, math.sqrt(dist2)))
-            check(not rect_circle_hit(abox, bx, by, r + 1),
-                  "number %d clear of dot %d" % (an, bn))
-            check(not rect_circle_hit(bbox, ax, ay, r + 1),
-                  "number %d clear of dot %d" % (bn, an))
-            check(not rect_hit(abox, bbox),
-                  "numbers %d/%d do not overlap" % (an, bn))
-    return dots
+    placed = []
+    for cx, cy, num, color in circles:
+        label = str(num)
+        tw = text_w(d, label, f_num)
+        box = None
+        for gap in (r + 3, r + 9, r + 15, r + 21):
+            for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1),
+                           (1, 1), (-1, 1), (1, -1), (-1, -1)):
+                if dx > 0:
+                    nx = cx + gap
+                elif dx < 0:
+                    nx = cx - gap - tw
+                else:
+                    nx = cx - tw / 2
+                if dy > 0:
+                    ny = cy + gap
+                elif dy < 0:
+                    ny = cy - gap - na
+                else:
+                    ny = cy - na / 2
+                trial = (nx, ny, nx + tw, ny + na)
+                if not (trial[0] >= x + 1 and trial[2] <= x + w - 2
+                        and trial[1] >= y + 1 and trial[3] <= y + h - 1):
+                    continue
+                if any(rect_circle_hit(trial, ox, oy, r + 1)
+                       for ox, oy, _, _ in circles):
+                    continue
+                if any(rect_hit(trial, old) for old in placed):
+                    continue
+                box = trial
+                break
+            if box is not None:
+                break
+        check(box is not None, "dot number placed: %d" % num)
+        assert box is not None  # narrows the optional for static analysis
+        placed.append(box)
+        # If the label had to sit away from its dot, add a thin leader line
+        # so the association stays unambiguous over the busy map.
+        bx = max(box[0], min(cx, box[2]))
+        by = max(box[1], min(cy, box[3]))
+        check((cx - bx) ** 2 + (cy - by) ** 2 <= (MAP_PAD_X + 24) ** 2,
+              "leader line short: %d" % num)
+        if (cx - bx) ** 2 + (cy - by) ** 2 > (r + 2) ** 2:
+            d.line([(cx, cy), (bx, by)], fill=color, width=1)
+        d.text((box[0], box[1]), label, font=f_num, fill=WHITE)
+    return circles
 
 
 def bottom_section(d, y0):
