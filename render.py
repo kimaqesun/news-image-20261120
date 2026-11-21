@@ -1,10 +1,16 @@
 #!/usr/bin/env python3
-"""Render the v3 "ONE DAY OF WORLD NEWS" newspaper front page.
+"""Render the v4 "ONE DAY OF WORLD NEWS" newspaper front page.
 
-Implements SPEC.md (design spec v3) from scratch: a dense, warm-cream
+Implements SPEC.md (design spec v4) from scratch: a dense, warm-cream
 newspaper/infographic front page covering 32 stories, all dated Friday
 20 November 2026. Pure PIL, fully deterministic -- no network, no
 randomness, no clock reads. Output: entry.png, 1024x1024, under 900 KB.
+
+v4: every one of the ten grid stories carries a real drawn illustration
+scene (~64px flat art), and the grid rhythm varies -- light cream/warm/
+cool cell tints, illustrations offset left vs right between neighbors,
+and a different accent underline style per row (solid / dashed, with a
+double rule separating the rows).
 
 Every text placement and every drawn box is guarded by an internal
 containment check; the run aborts on the first violation and prints a
@@ -35,6 +41,10 @@ TEAL = (0, 120, 120)
 AMBER = (200, 130, 20)
 GREEN = (40, 120, 60)
 PURPLE = (110, 50, 140)
+
+# v4 grid rhythm: very light cell tints (cream / warm / cool)
+TINTS = [(250, 247, 239), (251, 242, 229), (239, 245, 247)]
+ART_W, ART_H = 132, 64  # grid illustration scene size
 
 FONT_DIR = "/usr/share/fonts/truetype/dejavu"
 _font_cache = {}
@@ -124,20 +134,34 @@ def vrule(d, x, y0, y1, color=RULE, width=1):
     d.line([(x, y0), (x, y1)], fill=color, width=width)
 
 
-def chip(d, x, y, text, color, max_w):
+def chip(d, x, y, text, color, max_w, ch=18):
     """Rounded accent chip with white uppercase mono text; returns width."""
     f = font("mono", 11)
     tw = text_w(d, text, f)
     cw = int(tw) + 14
-    ch = 18
     check(cw <= max_w, "chip fits column: %r" % text)
     check(x + cw <= W - MARGIN + 1, "chip inside page: %r" % text)
-    d.rounded_rectangle([x, y, x + cw, y + ch], radius=9, fill=color)
+    d.rounded_rectangle([x, y, x + cw, y + ch], radius=ch // 2, fill=color)
     ascent, _ = f.getmetrics()
     ty = y + (ch - ascent) // 2
     check(ty >= y + 2 and ty + ascent <= y + ch - 2, "chip text padded: %r" % text)
     d.text((x + 7, ty), text, font=f, fill=(255, 255, 255))
     return cw
+
+
+def accent_underline(d, x, y, w, color, style):
+    """v4 accent underline under a grid headline; style varies per row."""
+    check(style in ("solid", "dashed", "double"), "underline style: " + style)
+    check(x >= 0 and x + w <= W and 0 <= y and y + 4 < H,
+          "underline in page at y=%d" % y)
+    if style == "solid":
+        d.line([(x, y), (x + w, y)], fill=color, width=2)
+    elif style == "dashed":
+        for sx in range(x, x + w - 5, 10):
+            d.line([(sx, y), (min(sx + 6, x + w), y)], fill=color, width=2)
+    else:  # double
+        d.line([(x, y - 1), (x + w, y - 1)], fill=color, width=1)
+        d.line([(x, y + 2), (x + w, y + 2)], fill=color, width=1)
 
 
 # ----------------------------------------------------------------------
@@ -174,34 +198,34 @@ FEATURED = [
 ]
 
 MID = [
-    dict(tag="US \u00b7 TECH", color=RED, icon="chip",
+    dict(tag="US \u00b7 TECH", color=RED, art="nvidia",
          head="Nvidia sinks 14% on SEC probe report",
          body="Reuters: SEC staff examining its accounting."),
-    dict(tag="T\u00dcRKIYE", color=AMBER, icon="globe",
+    dict(tag="T\u00dcRKIYE", color=AMBER, art="cop",
          head="COP31 runs into overtime, no deal",
          body="Draft omits fossil fuels; new text Saturday."),
-    dict(tag="POLAND", color=BLUE, icon="missile",
+    dict(tag="POLAND", color=BLUE, art="poland",
          head="Poland says 2 Russian missiles landed",
          body="A Kh-101 found by a forest; no one hurt."),
-    dict(tag="BRUSSELS", color=BLUE, icon="stars",
+    dict(tag="BRUSSELS", color=BLUE, art="ukeu",
          head="UK and EU seal food, carbon, visa deals",
          body="100,000 youth visas; food checks eased."),
-    dict(tag="HORMUZ", color=TEAL, icon="flame",
+    dict(tag="HORMUZ", color=TEAL, art="hormuz",
          head="Tanker set ablaze off Oman near Hormuz",
          body="No casualties; Iran's Guards blame a mine."),
-    dict(tag="INDIA", color=GREEN, icon="handshake",
+    dict(tag="INDIA", color=GREEN, art="indpak",
          head="Pakistani minister visits New Delhi",
          body="First visit since the May 2025 clash."),
-    dict(tag="KENYA", color=AMBER, icon="derrick",
+    dict(tag="KENYA", color=AMBER, art="kenya",
          head="Kenya starts drilling for Turkana oil",
          body="First crude targeted for 1 December."),
-    dict(tag="NEW ZEALAND", color=GREEN, icon="ball",
+    dict(tag="NEW ZEALAND", color=GREEN, art="rugby",
          head="New Zealand make 368 against India",
          body="Nicholls 175 not out, Phillips 118; India 159\u20131."),
-    dict(tag="ARGENTINA", color=TEAL, icon="arrow",
+    dict(tag="ARGENTINA", color=TEAL, art="arg",
          head="Argentina's country risk jumps to 1,070",
          body="Up 13%; first close over 1,000 in 13 months."),
-    dict(tag="HEALTH", color=PURPLE, icon="pill",
+    dict(tag="HEALTH", color=PURPLE, art="pill",
          head="Pancreatic cancer pill: 60.7% respond",
          body="Tumours shrink with chemo in 61 patients."),
 ]
@@ -238,27 +262,27 @@ BOTTOM_LINE = ("Every story here happened on, or was first reported on, "
                "Friday 20 November 2026 \u00b7 Sources: AP, Reuters, AFP, "
                "BBC, IMF, UKMTO · original drawings")
 
-# Map dots: (story number, x, y) in local map coordinates.
+# Map dots: (story number, x, y) in local map coordinates (470 x 136).
 MAP_REGIONS = [
-    ("EUROPE", BLUE, [(15, 262, 18), (6, 240, 34), (1, 288, 32),
-                      (14, 264, 44), (7, 222, 48), (17, 238, 64),
-                      (16, 278, 66), (5, 306, 56)]),
-    ("MIDDLE EAST", AMBER, [(18, 312, 78), (19, 340, 66),
-                            (20, 324, 110), (8, 364, 84)]),
-    ("ASIA", TEAL, [(9, 330, 46), (3, 342, 96), (25, 372, 104),
-                    (26, 396, 118), (23, 432, 44), (24, 410, 56)]),
-    ("AMERICAS", RED, [(31, 72, 92), (29, 92, 60), (30, 120, 52),
-                       (2, 134, 40), (28, 150, 62), (4, 44, 52),
-                       (32, 36, 74), (12, 112, 142)]),
-    ("AFRICA", GREEN, [(21, 228, 98), (22, 282, 88), (10, 296, 116)]),
-    ("OCEANIA", PURPLE, [(27, 398, 132), (11, 438, 150)]),
+    ("EUROPE", BLUE, [(15, 262, 16), (6, 238, 32), (1, 290, 30),
+                      (14, 262, 44), (7, 220, 48), (17, 238, 62),
+                      (16, 280, 62), (5, 308, 52)]),
+    ("MIDDLE EAST", AMBER, [(18, 314, 74), (19, 342, 60),
+                            (20, 326, 102), (8, 366, 80)]),
+    ("ASIA", TEAL, [(9, 330, 40), (3, 344, 88), (25, 374, 96),
+                    (26, 398, 110), (23, 434, 36), (24, 408, 52)]),
+    ("AMERICAS", RED, [(31, 72, 84), (29, 94, 56), (30, 122, 48),
+                       (2, 136, 32), (28, 152, 58), (4, 44, 48),
+                       (32, 36, 68), (12, 112, 124)]),
+    ("AFRICA", GREEN, [(21, 230, 92), (22, 284, 84), (10, 298, 112)]),
+    ("OCEANIA", PURPLE, [(27, 402, 124), (11, 440, 128)]),
 ]
 MAP_COUNTS = {"EUROPE": 8, "MIDDLE EAST": 4, "ASIA": 6,
               "AMERICAS": 8, "AFRICA": 3, "OCEANIA": 2}
 
 
 # ----------------------------------------------------------------------
-# Illustrations (flat vector shapes, pure PIL)
+# Featured illustrations (flat vector shapes, pure PIL, ~90px tall)
 # ----------------------------------------------------------------------
 
 def art_kyiv(d, x, y, w, h):
@@ -358,47 +382,262 @@ def art_cyclone(d, x, y, w, h):
         d.line([(x + rx, y + ry), (x + rx + 8, y + ry + 5)], fill=(90, 150, 150), width=2)
 
 
-ART_FUNCS = {"kyiv": art_kyiv, "chart": art_chart, "cyclone": art_cyclone}
+FEATURED_ART = {"kyiv": art_kyiv, "chart": art_chart, "cyclone": art_cyclone}
 
 
-def draw_icon(d, x, y, kind, color):
-    """18x18 accent icon square with a flat white glyph."""
-    s = 18
-    d.rounded_rectangle([x, y, x + s, y + s], radius=4, fill=color)
-    wh = (255, 255, 255)
-    if kind == "chip":  # falling mini chart
-        d.line([(x + 4, y + 6), (x + 8, y + 9), (x + 11, y + 8), (x + 14, y + 13)],
-               fill=wh, width=2)
-    elif kind == "globe":
-        d.ellipse([x + 4, y + 4, x + 14, y + 14], outline=wh, width=2)
-        d.line([(x + 4, y + 9), (x + 14, y + 9)], fill=wh, width=1)
-    elif kind == "missile":
-        d.line([(x + 4, y + 13), (x + 12, y + 5)], fill=wh, width=2)
-        d.polygon([(x + 14, y + 3), (x + 10, y + 5), (x + 13, y + 8)], fill=wh)
-    elif kind == "stars":
-        for ox, oy in [(6, 5), (11, 8), (6, 11)]:
-            d.ellipse([x + ox, y + oy, x + ox + 3, y + oy + 3], fill=wh)
-    elif kind == "flame":
-        d.polygon([(x + 9, y + 3), (x + 13, y + 10), (x + 9, y + 14),
-                   (x + 5, y + 10)], fill=wh)
-    elif kind == "handshake":
-        d.ellipse([x + 3, y + 6, x + 10, y + 13], outline=wh, width=2)
-        d.ellipse([x + 8, y + 6, x + 15, y + 13], outline=wh, width=2)
-    elif kind == "derrick":
-        d.polygon([(x + 9, y + 3), (x + 13, y + 14), (x + 5, y + 14)], outline=wh)
-        d.line([(x + 6, y + 10), (x + 12, y + 10)], fill=wh, width=1)
-    elif kind == "ball":
-        d.ellipse([x + 4, y + 4, x + 14, y + 14], outline=wh, width=2)
-        d.arc([x + 5, y + 5, x + 13, y + 13], 300, 120, fill=wh, width=1)
-    elif kind == "arrow":
-        d.line([(x + 5, y + 13), (x + 12, y + 6)], fill=wh, width=2)
-        d.polygon([(x + 14, y + 4), (x + 9, y + 5), (x + 13, y + 9)], fill=wh)
-    elif kind == "pill":
-        d.rounded_rectangle([x + 3, y + 7, x + 15, y + 12], radius=3, fill=wh)
-        d.line([(x + 9, y + 7), (x + 9, y + 12)], fill=color, width=1)
-    else:
-        raise AssertionError("unknown icon " + kind)
-    check(x + s <= W and y + s <= H, "icon in page: " + kind)
+# ----------------------------------------------------------------------
+# v4 grid illustrations: ten real drawn scenes, each ART_W x ART_H (64px)
+# ----------------------------------------------------------------------
+
+def art_canvas(d, x, y, fill, name):
+    """Checked scene background for a grid illustration."""
+    check(ART_H == 64, "grid art height 64: " + name)
+    check(x >= 0 and x + ART_W <= W and y >= 0 and y + ART_H <= H,
+          "grid art in page: " + name)
+    d.rectangle([x, y, x + ART_W, y + ART_H], fill=fill)
+
+
+def art_nvidia(d, x, y):
+    """Green descending candlesticks with a red SEC magnifier."""
+    art_canvas(d, x, y, (243, 248, 243), "nvidia")
+    d.line([(x + 8, y + 56), (x + 124, y + 56)], fill=FAINT, width=1)
+    for i, cx in enumerate((18, 42, 66, 90)):
+        top, bot = 10 + 9 * i, 24 + 9 * i
+        check(bot + 4 <= 60, "nvidia candle %d above baseline" % i)
+        d.line([(x + cx + 6, y + top - 4), (x + cx + 6, y + bot + 4)],
+               fill=(30, 90, 45), width=1)
+        d.rectangle([x + cx, y + top, x + cx + 12, y + bot], fill=GREEN)
+    # red SEC magnifier over the last candle
+    mx, my, r = x + 100, y + 40, 12
+    check(mx + r <= x + ART_W and my + r <= y + ART_H, "nvidia magnifier in scene")
+    d.ellipse([mx - r, my - r, mx + r, my + r], outline=RED, width=3)
+    d.line([(mx + 9, my + 9), (x + 120, y + 58)], fill=RED, width=3)
+    check(x + 120 <= x + ART_W and y + 58 <= y + ART_H, "nvidia handle in scene")
+
+
+def art_cop(d, x, y):
+    """Grey smokestacks, fading CO2 puffs, cracked earth strip."""
+    art_canvas(d, x, y, (246, 244, 239), "cop")
+    d.rectangle([x, y + 50, x + ART_W, y + 64], fill=(214, 196, 160))
+    for crack in [[(10, 52), (18, 57), (14, 62)], [(46, 51), (52, 58), (48, 63)],
+                  [(86, 53), (94, 57), (90, 62)], [(112, 52), (118, 59)]]:
+        pts = [(x + px, y + py) for px, py in crack]
+        check(all(y + 50 <= py <= y + 64 for _, py in pts), "cop crack in earth")
+        d.line(pts, fill=(120, 100, 70), width=1)
+    for sx in (22, 52, 82):
+        d.rectangle([x + sx, y + 20, x + sx + 12, y + 50], fill=(110, 110, 115))
+        d.rectangle([x + sx - 2, y + 18, x + sx + 14, y + 22], fill=(88, 88, 94))
+        d.line([(x + sx + 3, y + 30), (x + sx + 9, y + 30)], fill=(88, 88, 94), width=1)
+        # fading puffs drifting up and right
+        for j, (ox, oy, r, g) in enumerate([(6, 12, 5, 150), (12, 7, 4, 178),
+                                            (18, 3, 3, 206)]):
+            px, py = x + sx + ox, y + oy
+            check(px - r >= x and py - r >= y, "cop puff %d in scene" % j)
+            d.ellipse([px - r, py - r, px + r, py + r], fill=(g, g, g + 2))
+
+
+def art_poland(d, x, y):
+    """Dark triangle forest with two missiles stuck in the ground."""
+    art_canvas(d, x, y, (238, 243, 238), "poland")
+    d.rectangle([x, y + 52, x + ART_W, y + 64], fill=(96, 116, 84))
+    for cx, tw, th in [(12, 14, 26), (28, 16, 34), (44, 14, 22), (60, 16, 30),
+                       (76, 14, 26), (92, 16, 36), (108, 14, 24), (122, 12, 28)]:
+        check(cx - tw // 2 >= 0 and cx + tw // 2 <= ART_W and 52 - th >= 0,
+              "poland tree in scene at %d" % cx)
+        d.polygon([(x + cx, y + 52 - th), (x + cx - tw // 2, y + 52),
+                   (x + cx + tw // 2, y + 52)], fill=(24, 64, 38))
+    # two small missile silhouettes stuck in the ground at an angle
+    for (bx, by, tx, ty) in [(84, 58, 96, 34), (106, 60, 114, 40)]:
+        check(0 <= tx <= ART_W and 0 <= ty <= ART_H, "poland missile tip in scene")
+        d.line([(x + bx, y + by), (x + tx, y + ty)], fill=(70, 72, 80), width=4)
+        d.polygon([(x + tx, y + ty - 4), (x + tx - 3, y + ty + 3),
+                   (x + tx + 3, y + ty + 3)], fill=RED)
+        d.line([(x + bx - 4, y + by - 2), (x + bx + 4, y + by - 6)],
+               fill=(70, 72, 80), width=2)
+
+
+def art_ukeu(d, x, y):
+    """Two hands shaking over a simplified Union Jack + EU flag pair."""
+    art_canvas(d, x, y, (243, 246, 250), "ukeu")
+    # handshake: sleeves from both sides, overlapping hands in the middle
+    d.rectangle([x + 8, y + 20, x + 44, y + 28], fill=(40, 70, 130))
+    d.rectangle([x + 88, y + 20, x + 124, y + 28], fill=(70, 90, 140))
+    d.rounded_rectangle([x + 40, y + 16, x + 74, y + 32], radius=6,
+                        fill=(226, 186, 150))
+    d.rounded_rectangle([x + 58, y + 18, x + 92, y + 30], radius=6,
+                        fill=(206, 166, 130))
+    d.line([(x + 58, y + 20), (x + 66, y + 26)], fill=(170, 130, 96), width=2)
+    check(x + 124 <= x + ART_W and y + 32 <= y + ART_H, "ukeu handshake in scene")
+    # flag pair below: simplified Union Jack (cross) and EU circle of stars
+    fx, fy = x + 18, y + 42
+    d.rectangle([fx, fy, fx + 32, fy + 18], fill=(25, 60, 140))
+    d.rectangle([fx + 13, fy, fx + 19, fy + 18], fill=(245, 245, 245))
+    d.rectangle([fx, fy + 6, fx + 32, fy + 12], fill=(245, 245, 245))
+    d.rectangle([fx + 15, fy, fx + 17, fy + 18], fill=RED)
+    d.rectangle([fx, fy + 8, fx + 32, fy + 10], fill=RED)
+    ex, ey = x + 82, y + 42
+    d.rectangle([ex, ey, ex + 32, ey + 18], fill=(25, 60, 140))
+    for k in range(8):
+        a = k * math.pi / 4
+        sx = ex + 16 + 6 * math.cos(a)
+        sy = ey + 9 + 6 * math.sin(a)
+        d.ellipse([sx - 1.5, sy - 1.5, sx + 1.5, sy + 1.5], fill=(255, 210, 60))
+    check(fy + 18 <= y + ART_H and ex + 32 <= x + ART_W, "ukeu flags in scene")
+
+
+def art_hormuz(d, x, y):
+    """Black tanker hull, orange flames, grey smoke plumes over sea."""
+    art_canvas(d, x, y, (238, 244, 247), "hormuz")
+    d.rectangle([x, y + 44, x + ART_W, y + 64], fill=(150, 190, 206))
+    hull = [(x + 14, y + 40), (x + 112, y + 40), (x + 120, y + 48),
+            (x + 108, y + 54), (x + 22, y + 54), (x + 10, y + 46)]
+    check(all(x <= px <= x + ART_W and y <= py <= y + ART_H for px, py in hull),
+          "hormuz hull in scene")
+    d.polygon(hull, fill=(20, 20, 24))
+    d.rectangle([x + 92, y + 30, x + 106, y + 40], fill=(235, 235, 235))
+    # flames on deck
+    d.polygon([(x + 40, y + 40), (x + 46, y + 24), (x + 52, y + 34),
+               (x + 58, y + 20), (x + 64, y + 40)], fill=(240, 140, 30))
+    d.polygon([(x + 46, y + 40), (x + 51, y + 30), (x + 56, y + 36),
+               (x + 59, y + 28), (x + 61, y + 40)], fill=(255, 200, 60))
+    # fading smoke plumes
+    for px, py, r, g in [(52, 14, 6, 120), (62, 8, 5, 150), (74, 5, 4, 184)]:
+        check(y + py - r >= y and x + px + r <= x + ART_W, "hormuz smoke in scene")
+        d.ellipse([x + px - r, y + py - r, x + px + r, y + py + r],
+                  fill=(g, g + 2, g + 6))
+
+
+def art_indpak(d, x, y):
+    """Pakistan + India flags facing each other over a dotted handshake line."""
+    art_canvas(d, x, y, (246, 246, 241), "indpak")
+    d.line([(x + 30, y + 8), (x + 30, y + 54)], fill=(110, 110, 110), width=2)
+    d.line([(x + 102, y + 8), (x + 102, y + 54)], fill=(110, 110, 110), width=2)
+    # Pakistan: green with white crescent and star
+    d.rectangle([x + 32, y + 10, x + 64, y + 32], fill=(1, 65, 28))
+    d.ellipse([x + 39, y + 14, x + 53, y + 28], fill=(245, 245, 245))
+    d.ellipse([x + 43, y + 13, x + 56, y + 26], fill=(1, 65, 28))
+    d.ellipse([x + 55, y + 14, x + 58, y + 17], fill=(245, 245, 245))
+    # India: saffron / white / green with navy chakra
+    d.rectangle([x + 70, y + 10, x + 100, y + 17], fill=(255, 153, 51))
+    d.rectangle([x + 70, y + 17, x + 100, y + 25], fill=(248, 248, 248))
+    d.rectangle([x + 70, y + 25, x + 100, y + 32], fill=(18, 136, 7))
+    d.ellipse([x + 82, y + 18, x + 88, y + 24], outline=(20, 40, 120), width=1)
+    check(x + 100 <= x + ART_W and y + 32 <= y + ART_H, "indpak flags in scene")
+    # dotted handshake line between the poles with a small clasp
+    for px in range(34, 99, 6):
+        d.ellipse([x + px - 1, y + 47, x + px + 1, y + 49], fill=RULE)
+    d.ellipse([x + 60, y + 44, x + 68, y + 52], outline=GREEN, width=2)
+    d.ellipse([x + 64, y + 44, x + 72, y + 52], outline=AMBER, width=2)
+    check(y + 52 <= y + ART_H, "indpak clasp in scene")
+
+
+def art_kenya(d, x, y):
+    """Oil derrick triangle over ground layers, black droplet."""
+    art_canvas(d, x, y, (248, 244, 233), "kenya")
+    d.rectangle([x, y + 46, x + ART_W, y + 52], fill=(214, 190, 150))
+    d.rectangle([x, y + 52, x + ART_W, y + 58], fill=(180, 150, 110))
+    d.rectangle([x, y + 58, x + ART_W, y + 64], fill=(140, 110, 80))
+    # derrick triangle with cross braces
+    apex, bl, br = (x + 44, y + 6), (x + 24, y + 46), (x + 64, y + 46)
+    check(apex[1] >= y and bl[0] >= x and br[0] <= x + ART_W, "kenya derrick in scene")
+    d.line([apex, bl], fill=(60, 50, 40), width=2)
+    d.line([apex, br], fill=(60, 50, 40), width=2)
+    d.line([bl, br], fill=(60, 50, 40), width=2)
+    for by in (18, 30):
+        t = (by - 6) / 40
+        lx = x + 44 + (24 - 44) * t
+        rx = x + 44 + (64 - 44) * t
+        d.line([(lx, y + by), (rx, y + by)], fill=(60, 50, 40), width=1)
+    # black oil droplet
+    d.polygon([(x + 96, y + 16), (x + 89, y + 30), (x + 103, y + 30)],
+              fill=(20, 20, 24))
+    d.ellipse([x + 88, y + 26, x + 104, y + 42], fill=(20, 20, 24))
+    check(x + 104 <= x + ART_W and y + 42 <= y + ART_H, "kenya droplet in scene")
+
+
+def art_rugby(d, x, y):
+    """White rugby ball mid-flight over two tiny player figures."""
+    art_canvas(d, x, y, (240, 247, 240), "rugby")
+    d.rectangle([x, y + 52, x + ART_W, y + 64], fill=(116, 168, 108))
+    # two tiny players (head, body, legs)
+    for px, py, jersey in [(36, 38, (25, 25, 30)), (88, 40, (25, 25, 30))]:
+        d.ellipse([x + px - 3, y + py, x + px + 3, y + py + 6], fill=(224, 184, 148))
+        d.rectangle([x + px - 3, y + py + 6, x + px + 3, y + py + 14], fill=jersey)
+        d.line([(x + px - 2, y + py + 14), (x + px - 3, y + py + 18)],
+               fill=jersey, width=2)
+        d.line([(x + px + 2, y + py + 14), (x + px + 3, y + py + 18)],
+               fill=jersey, width=2)
+        check(y + py + 18 <= y + 60, "rugby player on pitch at %d" % px)
+    # tilted white ball (deterministic ellipse polygon) with seam
+    cx, cy, rx, ry, ang = x + 66, y + 20, 16, 9, -25 * math.pi / 180
+    pts = []
+    for k in range(24):
+        t = k * math.pi / 12
+        ex, ey = rx * math.cos(t), ry * math.sin(t)
+        pts.append((cx + ex * math.cos(ang) - ey * math.sin(ang),
+                    cy + ex * math.sin(ang) + ey * math.cos(ang)))
+    check(all(x <= px <= x + ART_W and y <= py <= y + ART_H for px, py in pts),
+          "rugby ball in scene")
+    d.polygon(pts, fill=(250, 250, 248))
+    d.line(pts + [pts[0]], fill=(110, 110, 115), width=2)
+    d.line([(cx - 10 * math.cos(ang), cy - 10 * math.sin(ang)),
+            (cx + 10 * math.cos(ang), cy + 10 * math.sin(ang))],
+           fill=(110, 110, 115), width=1)
+    for t in (-4, 0, 4):  # lace stitches across the seam
+        lx = cx + t * math.cos(ang)
+        ly = cy + t * math.sin(ang)
+        d.line([(lx - 2 * math.sin(ang), ly + 2 * math.cos(ang)),
+                (lx + 2 * math.sin(ang), ly - 2 * math.cos(ang))],
+               fill=(110, 110, 115), width=1)
+    # motion dashes behind the ball
+    for dx, dy in [(30, 14), (24, 20), (30, 26)]:
+        d.line([(x + dx, y + dy), (x + dx + 8, y + dy)], fill=(170, 190, 170), width=2)
+
+
+def art_arg(d, x, y):
+    """Steep rising red risk line with a flag-blue sun disc."""
+    art_canvas(d, x, y, (243, 248, 251), "arg")
+    d.line([(x + 12, y + 56), (x + 124, y + 56)], fill=FAINT, width=1)
+    d.line([(x + 12, y + 8), (x + 12, y + 56)], fill=FAINT, width=1)
+    # flag-blue sun with rays (Sol de Mayo, simplified)
+    sx, sy, r = x + 26, y + 16, 8
+    check(sx - r - 4 >= x and sy - r - 4 >= y, "arg sun in scene")
+    for k in range(8):
+        a = k * math.pi / 4
+        d.line([(sx + (r + 1) * math.cos(a), sy + (r + 1) * math.sin(a)),
+                (sx + (r + 4) * math.cos(a), sy + (r + 4) * math.sin(a))],
+               fill=(116, 174, 216), width=2)
+    d.ellipse([sx - r, sy - r, sx + r, sy + r], fill=(116, 174, 216))
+    # steep rising risk line with arrowhead
+    pts = [(x + 16, y + 52), (x + 38, y + 48), (x + 56, y + 40),
+           (x + 76, y + 30), (x + 96, y + 18), (x + 112, y + 10)]
+    d.line(pts, fill=RED, width=3)
+    d.polygon([(x + 118, y + 6), (x + 108, y + 8), (x + 114, y + 16)], fill=RED)
+    check(x + 118 <= x + ART_W and y + 6 >= y, "arg arrow in scene")
+
+
+def art_pill(d, x, y):
+    """Capsule pill half red half white with radiating success ticks."""
+    art_canvas(d, x, y, (248, 244, 250), "pill")
+    # capsule: white body, red left half, split line
+    d.rounded_rectangle([x + 38, y + 22, x + 94, y + 44], radius=11,
+                        fill=(250, 250, 250), outline=(150, 150, 155), width=1)
+    d.rounded_rectangle([x + 38, y + 22, x + 66, y + 44], radius=11, fill=RED)
+    d.rectangle([x + 56, y + 22, x + 66, y + 44], fill=RED)
+    d.line([(x + 66, y + 22), (x + 66, y + 44)], fill=(150, 150, 155), width=1)
+    check(x + 94 <= x + ART_W and y + 44 <= y + ART_H, "pill capsule in scene")
+    # radiating success ticks
+    for cx, cy in [(24, 16), (104, 14), (18, 46), (108, 48), (66, 8)]:
+        check(x + cx + 5 <= x + ART_W and y + cy - 4 >= y and y + cy + 3 <= y + ART_H,
+              "pill tick in scene at %d,%d" % (cx, cy))
+        d.line([(x + cx - 4, y + cy), (x + cx - 1, y + cy + 3),
+                (x + cx + 5, y + cy - 4)], fill=GREEN, width=2)
+
+
+MID_ART = {"nvidia": art_nvidia, "cop": art_cop, "poland": art_poland,
+           "ukeu": art_ukeu, "hormuz": art_hormuz, "indpak": art_indpak,
+           "kenya": art_kenya, "rugby": art_rugby, "arg": art_arg,
+           "pill": art_pill}
 
 
 # ----------------------------------------------------------------------
@@ -420,15 +659,20 @@ def top_bar(d):
 
 def masthead(d, y0):
     size = 66
-    while size > 40 and text_w(d, MASTHEAD, font("serif", size)) > CONTENT_W - 32:
+    while size > 40:
+        f = font("serif", size)
+        ascent, descent = f.getmetrics()
+        if (text_w(d, MASTHEAD, f) <= CONTENT_W - 32
+                and ascent + descent <= 68):
+            break
         size -= 2
     f = font("serif", size)
     ascent, descent = f.getmetrics()
-    check(ascent + descent <= 84, "masthead height budget")
-    put(d, W // 2, y0 + 4, MASTHEAD, f, INK, CONTENT_W - 32, y0 + 88,
+    check(ascent + descent <= 68, "masthead height budget")
+    put(d, W // 2, y0 + 4, MASTHEAD, f, INK, CONTENT_W - 32, y0 + 76,
         anchor="mt", label="masthead")
     ry = y0 + 4 + ascent + descent + 4
-    check(ry + 4 <= 140, "masthead rules within budget")
+    check(ry + 4 <= y0 + 84, "masthead rules within budget")
     hrule(d, MARGIN, W - MARGIN, ry, INK, 2)
     hrule(d, MARGIN, W - MARGIN, ry + 4, INK, 1)
     return ry + 4
@@ -443,7 +687,7 @@ def numbers_strip(d, y0):
         anchor="mt", label="numbers header")
     hrule(d, MARGIN, hx - 12, y0 + 7, RULE)
     hrule(d, hx + hw + 12, W - MARGIN, y0 + 7, RULE)
-    cell_top, cell_bot = y0 + 20, y0 + 102
+    cell_top, cell_bot = y0 + 18, y0 + 84
     f_num = font("mono", 24)
     f_lab = font("sans", 11)
     na, nd = f_num.getmetrics()
@@ -458,27 +702,27 @@ def numbers_strip(d, y0):
         check(nw <= cw - 16, "stat number fits cell: %s" % num)
         put(d, cx, cell_top + 4, num, f_num, INK, cw - 16, cell_top + 4 + na + nd,
             anchor="mt", label="stat " + num)
-        ly = cell_top + 4 + na + nd + 6
+        ly = cell_top + 4 + na + nd + 4
         for j, lab in enumerate((l1, l2)):
             lw = text_w(d, lab, f_lab)
             check(lw <= cw - 12, "stat label fits cell: %r" % lab)
             put(d, cx, ly + j * 14, lab, f_lab, RULE, cw - 12, cell_bot,
                 anchor="mt", label="stat label")
         check(ly + 28 <= cell_bot, "stat cell vertical budget: %s" % num)
-    hrule(d, MARGIN, W - MARGIN, cell_bot + 8)
-    return cell_bot + 8
+    hrule(d, MARGIN, W - MARGIN, cell_bot + 6)
+    return cell_bot + 6
 
 
 def featured_row(d, y0):
     gap = 16
     colw = (CONTENT_W - 2 * gap) // 3  # 320
-    bottom_limit = y0 + 212
+    bottom_limit = y0 + 196
     for i, st in enumerate(FEATURED):
         x = MARGIN + i * (colw + gap)
         inner = colw - 16
-        ART_FUNCS[st["art"]](d, x, y0, colw, 90)
+        FEATURED_ART[st["art"]](d, x, y0, colw, 90)
         check(y0 + 90 <= bottom_limit, "featured art budget")
-        cy = y0 + 98
+        cy = y0 + 96
         chip(d, x, cy, st["tag"], st["color"], inner)
         # headline: largest serif size that wraps to <= 2 lines
         hs = 18
@@ -490,13 +734,13 @@ def featured_row(d, y0):
         hf = font("serif", hs)
         lines = wrap(d, st["head"], hf, inner)
         check(len(lines) <= 2, "featured headline <= 2 lines: %r" % st["head"])
-        hy = cy + 26
-        hend = put_lines(d, x, hy, lines, hf, INK, hs + 5, inner,
+        hy = cy + 24
+        hend = put_lines(d, x, hy, lines, hf, INK, hs + 3, inner,
                          bottom_limit, label="featured head")
         bf = font("sans", 12)
         blines = wrap(d, st["body"], bf, inner)
         check(len(blines) <= 2, "featured body <= 2 lines: %r" % st["body"])
-        bend = put_lines(d, x, hend + 6, blines, bf, RULE, 16, inner,
+        bend = put_lines(d, x, hend + 4, blines, bf, RULE, 15, inner,
                          bottom_limit, label="featured body")
         check(bend <= bottom_limit, "featured column fits: %s" % st["tag"])
     hrule(d, MARGIN, W - MARGIN, bottom_limit + 8)
@@ -504,32 +748,54 @@ def featured_row(d, y0):
 
 
 def mid_grid(d, y0):
-    gap = 12
+    """v4: ten illustrated cells with varied tint / offset / underline."""
+    gap = 10
     colw = (CONTENT_W - 4 * gap) // 5  # 188
-    rowh = 106
+    rowh = 156
     inner = colw - 8
     hf = font("serif", 14)
     bf = font("sans", 11)
+    row_styles = ["solid", "dashed"]  # different accent underline per row
+    prev_side = None
     for i, st in enumerate(MID):
         r, c = divmod(i, 5)
         x = MARGIN + c * (colw + gap)
         y = y0 + r * (rowh + gap)
         cell_bot = y + rowh
-        draw_icon(d, x, y, st["icon"], st["color"])
-        cw = chip(d, x + 24, y, st["tag"], st["color"], inner - 24)
-        check(24 + cw <= colw, "icon+chip row fits: %s" % st["tag"])
+        # rhythm 1: very light tinted background, cycling cream/warm/cool
+        tint = TINTS[i % 3]
+        check(tint in TINTS, "grid tint from palette: %s" % st["tag"])
+        d.rectangle([x, y, x + colw, y + rowh], fill=tint)
+        # rhythm 2: illustration offset left vs right between neighbors
+        side = (r + c) % 2
+        if prev_side is not None:
+            check(side != prev_side, "grid art offset alternates: %s" % st["tag"])
+        prev_side = side
+        ax = x if side == 0 else x + colw - ART_W
+        check(ax >= x and ax + ART_W <= x + colw, "grid art inside cell: %s" % st["tag"])
+        MID_ART[st["art"]](d, ax, y)
+        check(y + ART_H <= cell_bot, "grid art height budget: %s" % st["tag"])
+        # chip, headline, accent underline, body
+        chip(d, x + 4, y + 66, st["tag"], st["color"], inner, ch=16)
         lines = wrap(d, st["head"], hf, inner)
-        check(len(lines) <= 3, "mid headline <= 3 lines: %r" % st["head"])
-        hend = put_lines(d, x + 1, y + 24, lines, hf, INK, 17, inner,
+        check(len(lines) <= 2, "mid headline <= 2 lines: %r" % st["head"])
+        hend = put_lines(d, x + 4, y + 86, lines, hf, INK, 17, inner,
                          cell_bot, label="mid head")
+        check(hend <= y + 121, "mid headline above underline: %s" % st["tag"])
+        accent_underline(d, x + 4, y + 123, inner, st["color"], row_styles[r])
         blines = wrap(d, st["body"], bf, inner)
         check(len(blines) <= 2, "mid body <= 2 lines: %r" % st["body"])
-        bend = put_lines(d, x + 1, hend + 4, blines, bf, RULE, 14, inner,
+        bend = put_lines(d, x + 4, hend + 7, blines, bf, RULE, 13, inner,
                          cell_bot, label="mid body")
-        check(bend <= cell_bot, "mid cell fits: %s" % st["tag"])
+        check(bend <= cell_bot - 2, "mid cell fits: %s" % st["tag"])
+    # rhythm 3: double rule separating the two rows (solid/dashed under heads)
+    sep_y = y0 + rowh + gap // 2
+    hrule(d, MARGIN, W - MARGIN, sep_y - 2, FAINT, 1)
+    hrule(d, MARGIN, W - MARGIN, sep_y + 1, FAINT, 1)
+    check(sep_y + 1 < y0 + rowh + gap, "row separator clear of row 2")
     end = y0 + 2 * rowh + gap
-    hrule(d, MARGIN, W - MARGIN, end + 8)
-    return end + 8
+    hrule(d, MARGIN, W - MARGIN, end + 6)
+    return end + 6
 
 
 def world_map(d, x, y, w, h):
@@ -588,29 +854,26 @@ def bottom_section(d, y0):
     div_x = MARGIN + left_w + 10
     right_x = div_x + 10
     right_w = W - MARGIN - right_x
-    sec_bot = y0 + 224
+    sec_bot = y0 + 180
     fh = font("mono", 13)
     # left: map
     put(d, MARGIN, y0, "WHERE IT HAPPENED", fh, INK, left_w, y0 + 18,
         label="map header")
-    map_y, map_h = y0 + 24, 160
+    map_y, map_h = y0 + 22, 136
     world_map(d, MARGIN, map_y, left_w, map_h)
-    # legend: two rows of three color-coded region entries
+    # legend: one row of six color-coded region entries
     fl = font("sans", 11)
-    ly0 = map_y + map_h + 8
+    ly = map_y + map_h + 6
     lx = MARGIN
-    for i, (name, color, pts) in enumerate(MAP_REGIONS):
-        row, col = divmod(i, 3)
-        if col == 0:
-            lx = MARGIN
-        ly = ly0 + row * 16
+    for name, color, pts in MAP_REGIONS:
         d.rectangle([lx, ly + 2, lx + 8, ly + 10], fill=color)
         label = "%s %d" % (name, len(pts))
         lw = text_w(d, label, fl)
         check(lx + 12 + lw <= div_x - 6, "legend item fits: %s" % name)
         put(d, lx + 12, ly, label, fl, RULE, lw + 1, sec_bot, label="legend")
-        lx += 12 + lw + 12
-    check(ly0 + 16 + 14 <= sec_bot, "legend vertical budget")
+        lx += 12 + lw + 6
+    check(lx - 6 <= div_x - 6, "legend row fits left column")
+    check(ly + 14 <= sec_bot, "legend vertical budget")
     vrule(d, div_x, y0, sec_bot - 4, RULE)
     # right: numbered also-list, two columns (14..23, 24..32)
     put(d, right_x, y0, "ALSO ON FRIDAY 20 NOVEMBER", fh, INK, right_w,
@@ -619,7 +882,7 @@ def bottom_section(d, y0):
     sub_w = (right_w - sub_gap) // 2
     fn = font("mono", 11)
     ft = font("sans", 11)
-    list_y = y0 + 24
+    list_y = y0 + 22
     for col, (start, items) in enumerate([(14, ALSO[:10]), (24, ALSO[10:])]):
         sx = right_x + col * (sub_w + sub_gap)
         yy = list_y
@@ -633,8 +896,8 @@ def bottom_section(d, y0):
             put(d, sx, yy, num, fn, INK, nw + 1, sec_bot, label="also num")
             yy = put_lines(d, tx, yy, lines, ft, RULE, 13, avail, sec_bot,
                            label="also item")
-            yy += 3
-        check(yy - 3 <= sec_bot, "also column fits: col %d" % col)
+            yy += 2
+        check(yy - 2 <= sec_bot, "also column fits: col %d" % col)
     return sec_bot
 
 
@@ -664,16 +927,16 @@ def render(path):
     d = ImageDraw.Draw(img)
 
     y = top_bar(d)                      # -> 40
-    y = masthead(d, y + 6)              # double rule ~134
-    check(y <= 140, "masthead section budget")
-    y = numbers_strip(d, y + 8)         # header + cells + rule
-    check(y <= 254, "numbers section budget")
-    y = featured_row(d, y + 8)
-    check(y <= 482, "featured section budget")
-    y = mid_grid(d, y + 8)
-    check(y <= 722, "mid grid section budget")
-    y = bottom_section(d, y + 8)
-    check(y <= 954, "bottom section budget")
+    y = masthead(d, y + 4)              # double rule ~124
+    check(y <= 128, "masthead section budget")
+    y = numbers_strip(d, y + 6)         # header + cells + rule
+    check(y <= 224, "numbers section budget")
+    y = featured_row(d, y + 6)
+    check(y <= 434, "featured section budget")
+    y = mid_grid(d, y + 6)
+    check(y <= 770, "mid grid section budget")
+    y = bottom_section(d, y + 4)
+    check(y <= 956, "bottom section budget")
     y = footer(d, y + 4)
     check(y <= H - 4, "footer within page")
 
