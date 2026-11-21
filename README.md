@@ -1,3 +1,5 @@
+[![reward](https://make.fun/badge/news-image-20261120/kimaqesun/news-image-20261120/reward.svg)](https://make.fun/bounty/news-image-20261120?utm_source=github&utm_medium=readme&utm_campaign=news-image-20261120)
+
 # World News Manga — news-image-20261120
 
 A manga-style summary of 20 November 2026's world news in one 1024x1024 PNG.
